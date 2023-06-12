@@ -11,7 +11,6 @@ from src.utils import calculateRelativeObseration
 
 class TrackLoader():
     def __init__(self,
-                 physicsClientId:int,
                  track_path: Union[str, Path] = "tracks/sample_track.csv",
                  assets_path: Union[str, Path] = "assets/",
                  randomise: bool = False,
@@ -22,7 +21,7 @@ class TrackLoader():
         self.track_path = Path(track_path)
         self.assets_path = Path(assets_path)
         self.randomise = randomise
-        self.CLIENT = physicsClientId
+        self.track = self._parseTrack()
 
     def _readCSV(self):
         with open(self.track_path) as file:
@@ -48,25 +47,25 @@ class TrackLoader():
         return track
             
     def _generateObservations(self, track):
-        observations = deque(maxlen = len(track) + 1)
-        observations.append(([0, 0, 0], 0))
+        observations = []
         for g1, g2 in zip(track[:-1], track[1:]):
             obj1, obj2 = g1[1:3], g2[1:3]
             observations.append(calculateRelativeObseration(obj1, obj2))
 
         return observations
 
-    def _addTrackBullet(self, track):
+    def _addTrackBullet(self, track, CLIENT):
         g_urdfs = []
+        #TODO - add randomise
         for g in track:
             asset_path, pos, ort, scale = g
             g_urdf  = p.loadURDF(   str(asset_path),
                                     pos, 
                                     ort, 
                                     globalScaling=scale,
-                                    useFixedBase=0,
-                                    physicsClientId=self.CLIENT,
-                                    flags=p.URDF_MERGE_FIXED_LINKS
+                                    useFixedBase=1,
+                                    physicsClientId=CLIENT,
+                                    # flags=p.URDF_MERGE_FIXED_LINKS
 
                             )
             g_urdfs.append(g_urdf)
@@ -74,12 +73,14 @@ class TrackLoader():
 
         return g_urdfs
 
-    def loadTrack(self):
-        track = self._parseTrack()
-        obs = self._generateObservations(track)
-        g_urdfs = self._addTrackBullet(track)
+    def loadTrack(self, CLIENT):
+        obs = self._generateObservations(self.track)
+        g_urdfs = self._addTrackBullet(self.track, CLIENT)
 
         return obs, g_urdfs
+    
+    def __len__(self):
+        return len(self.track)
     
 if __name__ == "__main__":
     import pybullet_data

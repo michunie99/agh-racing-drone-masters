@@ -21,7 +21,6 @@ class RaceAviary(BaseAviary):
 
     def __init__(self,
                  drone_model: DroneModel=DroneModel.CF2X,
-                 num_drones: int=1,
                  neighbourhood_radius: float=np.inf,
                  initial_xyzs=None,
                  initial_rpys=None,
@@ -30,9 +29,11 @@ class RaceAviary(BaseAviary):
                  aggregate_phy_steps: int=1,
                  gui=False,
                  record=False,
-                 obstacles=True,
                  user_debug_gui=True,
-                 output_folder='results'
+                 output_folder='results',
+                 gates_lookup=1,
+                 normalize_state=False,
+                 track_path="tracks/sample_track.csv"
                  ):
         """Initialization of an aviary environment for control applications.
 
@@ -64,8 +65,16 @@ class RaceAviary(BaseAviary):
             Whether to draw the drones' axes and the GUI RPMs sliders.
 
         """
+        self.gates_lookup=gates_lookup
+        self.normlize_state=normalize_state
+
+        self.track_path=track_path
+        self.track_loader=TrackLoader(self.track_path)
+        self.NUMBER_GATES=len(self.track_loader)
+        self.obs_size=19 + (self.NUMBER_GATES-1)*4
+
         super().__init__(drone_model=drone_model,
-                         num_drones=num_drones,
+                         num_drones=1,
                          neighbourhood_radius=neighbourhood_radius,
                          initial_xyzs=initial_xyzs,
                          initial_rpys=initial_rpys,
@@ -74,15 +83,21 @@ class RaceAviary(BaseAviary):
                          aggregate_phy_steps=aggregate_phy_steps,
                          gui=gui,
                          record=record,
-                         obstacles=obstacles,
+                         obstacles=True,
                          user_debug_gui=user_debug_gui,
                          output_folder=output_folder
                          )
         
         
 
-    ################################################################################
 
+    ################################################################################
+    def _addObstacles(self):
+        obs, ids = self.track_loader.loadTrack(self.CLIENT)
+        self.GATE_IDS = ids
+        self.OBS = obs
+
+    ################################################################################
     def _actionSpace(self):
         """Returns the action space of the environment.
 
@@ -96,76 +111,70 @@ class RaceAviary(BaseAviary):
         #### Action vector ######## P0            P1            P2            P3
         act_lower_bound = np.array([0.,           0.,           0.,           0.])
         act_upper_bound = np.array([self.MAX_RPM, self.MAX_RPM, self.MAX_RPM, self.MAX_RPM])
-        return spaces.Dict({str(i): spaces.Box(low=act_lower_bound,
-                                               high=act_upper_bound,
-                                               dtype=np.float32
-                                               ) for i in range(self.NUM_DRONES)})
+        return spaces.Box(  low=act_lower_bound,
+                            high=act_upper_bound,
+                            dtype=np.float32)
     
     ################################################################################
 
+    def _preprocessAction(self,
+                          action
+                          ):
+        """Pre-processes the action passed to `.step()` into motors' RPMs. """
+        #TODO - netwrok output to RPM
+        return action
+
+    ################################################################################
     def _observationSpace(self):
         """Returns the observation space of the environment.
 
         Returns
         -------
         dict[str, dict[str, ndarray]]
-            A Dict with NUM_DRONES entries indexed by Id in string format,
-            each a Dict in the form {Box(20,), MultiBinary(NUM_DRONES)}.
-
+            A Box of drone observations
         """
-        #### Observation vector ### X        Y        Z       Q1   Q2   Q3   Q4   R       P       Y       VX       VY       VZ       WX       WY       WZ       P0            P1            P2            P3
-        obs_lower_bound = np.array([-np.inf, -np.inf, 0.,     -1., -1., -1., -1., -np.pi, -np.pi, -np.pi, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf, 0.,           0.,           0.,           0.])
-        obs_upper_bound = np.array([np.inf,  np.inf,  np.inf, 1.,  1.,  1.,  1.,  np.pi,  np.pi,  np.pi,  np.inf,  np.inf,  np.inf,  np.inf,  np.inf,  np.inf,  self.MAX_RPM, self.MAX_RPM, self.MAX_RPM, self.MAX_RPM])
-        return spaces.Dict({str(i): spaces.Dict({"state": spaces.Box(low=obs_lower_bound,
-                                                                     high=obs_upper_bound,
-                                                                     dtype=np.float32
-                                                                     ),
-                                                 "neighbors": spaces.MultiBinary(self.NUM_DRONES)
-                                                 }) for i in range(self.NUM_DRONES)})
-
+        #### Observation vector ### 
+        ###                            Vx       Vy        Vz      Ax        Ay       Az      r1*9,    wx       wy      wz              gates*n
+        # obs_lower_bound = np.array([-np.inf, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf, *[-1]*9, -np.inf, -np.inf, -np.inf, [0, -2*np.pi, -np.pi]*self.gates_lookup])
+        # obs_upper_bound = np.array([np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, *[1]*9, np.inf, np.inf, np.inf, *[np.inf, 2*np.pi, np.pi]*self.gates_lookup])
+        # return spaces.Box( low=obs_lower_bound,
+        #                     high=obs_upper_bound,
+        #                     dtype=np.float32
+        # )             
+        return spaces.Box( low=np.ones((self.obs_size, ))*-np.inf,
+                            high=np.ones((self.obs_size, ))*np.inf,
+                            dtype=np.float32
+        )
     ################################################################################
 
     def _computeObs(self):
-        """Returns the current observation of the environment.
+        """Returns the current observation of the environment. """
+        state = self._getDroneStateVector(0)
 
-        For the value of key "state", see the implementation of `_getDroneStateVector()`,
-        the value of key "neighbors" is the drone's own row of the adjacency matrix.
+        if self.normlize_state:
+            state = self._clipAndNormalizeState(state)
 
-        Returns
-        -------
-        dict[str, dict[str, ndarray]]
-            A Dict with NUM_DRONES entries indexed by Id in string format,
-            each a Dict in the form {Box(20,), MultiBinary(NUM_DRONES)}.
+        rot_matrix = p.getMatrixFromQuaternion(state[3:7])
+        # gates = self.gates_queue[:self.gates_lookup]
+        gates = self.OBS
+        acc = self._calculateAcceleration()
+        # TODO fix obervations !!!
+        obs = np.hstack([state[9:13], acc, rot_matrix, state[12:15], gates[0]]).reshape(self.obs_size,)
+        return obs.astype('float32')
 
-        """
-        adjacency_mat = self._getAdjacencyMatrix()
-        return {str(i): {"state": self._getDroneStateVector(i), "neighbors": adjacency_mat[i, :]} for i in range(self.NUM_DRONES)}
 
     ################################################################################
-
-    def _preprocessAction(self,
-                          action
-                          ):
-        """Pre-processes the action passed to `.step()` into motors' RPMs.
-
-        Clips and converts a dictionary into a 2D array.
-
-        Parameters
-        ----------
-        action : dict[str, ndarray]
-            The (unbounded) input action for each drone, to be translated into feasible RPMs.
-
-        Returns
-        -------
-        ndarray
-            (NUM_DRONES, 4)-shaped array of ints containing to clipped RPMs
-            commanded to the 4 motors of each drone.
-
-        """
-        clipped_action = np.zeros((self.NUM_DRONES, 4))
-        for k, v in action.items():
-            clipped_action[int(k), :] = np.clip(np.array(v), 0, self.MAX_RPM)
-        return clipped_action
+    def _calculateAcceleration(self):
+        #TODO
+        return np.array([0, 0, 0])
+    
+    ################################################################################
+    def _clipAndNormalizeState(self,
+                               state
+                               ):
+        """Normalizes a drone's state to the [-1,1] range. """
+        #TODO
+        return state
 
     ################################################################################
 
@@ -185,21 +194,10 @@ class RaceAviary(BaseAviary):
     ################################################################################
     
     def _computeTerminated(self):
-        """Computes the current terminated value(s).
-
-        Unused as this subclass is not meant for reinforcement learning.
-
-        Returns
-        -------
-        bool
-            Dummy value.
-
-        """
-        for i in range(self.NUM_DRONES):
-            p.performCollisionDetection(self.CLIENT)
-            print(self.DRONE_IDS[i], p.getContactPoints(self.DRONE_IDS[i], self.CLIENT))
-            if len(p.getContactPoints(self.DRONE_IDS[i], self.CLIENT)):
-                return True
+        """Computes the current terminated value(s)."""
+        return False
+        if len(p.getContactPoints(self.DRONE_IDS[0], self.CLIENT)):
+            return True
         return False
     
     ################################################################################
@@ -231,71 +229,3 @@ class RaceAviary(BaseAviary):
 
         """
         return {"answer": 42} #### Calculated by the Deep Thought supercomputer in 7.5M years
-
-
-    def _loadTrack(self):
-        loader = TrackLoader(self.CLIENT, 
-                             "tracks/single_gate.csv")
-        
-        obs, g_urdfs = loader.loadTrack()
-
-        return obs, g_urdfs
-    
-
-
-    def _housekeeping(self):
-        """Housekeeping function.
-
-        Allocation and zero-ing of the variables and PyBullet's parameters/objects
-        in the `reset()` function.
-
-        """
-        #### Initialize/reset counters and zero-valued variables ###
-        self.RESET_TIME = time.time()
-        self.step_counter = 0
-        self.first_render_call = True
-        self.X_AX = -1*np.ones(self.NUM_DRONES)
-        self.Y_AX = -1*np.ones(self.NUM_DRONES)
-        self.Z_AX = -1*np.ones(self.NUM_DRONES)
-        self.GUI_INPUT_TEXT = -1*np.ones(self.NUM_DRONES)
-        self.USE_GUI_RPM=False
-        self.last_input_switch = 0
-        self.last_action = -1*np.ones((self.NUM_DRONES, 4))
-        self.last_clipped_action = np.zeros((self.NUM_DRONES, 4))
-        self.gui_input = np.zeros(4)
-        #### Initialize the drones kinemaatic information ##########
-        self.pos = np.zeros((self.NUM_DRONES, 3))
-        self.quat = np.zeros((self.NUM_DRONES, 4))
-        self.rpy = np.zeros((self.NUM_DRONES, 3))
-        self.vel = np.zeros((self.NUM_DRONES, 3))
-        self.ang_v = np.zeros((self.NUM_DRONES, 3))
-        if self.PHYSICS == Physics.DYN:
-            self.rpy_rates = np.zeros((self.NUM_DRONES, 3))
-        #### Set PyBullet's parameters #############################
-        p.setGravity(0, 0, -self.G, physicsClientId=self.CLIENT)
-        p.setRealTimeSimulation(0, physicsClientId=self.CLIENT)
-        p.setTimeStep(self.TIMESTEP, physicsClientId=self.CLIENT)
-        p.setAdditionalSearchPath(pybullet_data.getDataPath(), physicsClientId=self.CLIENT)
-        #### Load ground plane, drone and obstacles models #########
-        self.PLANE_ID = p.loadURDF("plane.urdf", physicsClientId=self.CLIENT)
-
-        self.DRONE_IDS = np.array([p.loadURDF(pkg_resources.resource_filename('gym_pybullet_drones', 'assets/'+self.URDF),
-                                              self.INIT_XYZS[i,:],
-                                              p.getQuaternionFromEuler(self.INIT_RPYS[i,:]),
-                                              flags = p.URDF_USE_INERTIA_FROM_FILE,
-                                              physicsClientId=self.CLIENT
-                                              ) for i in range(self.NUM_DRONES)])
-        #### Remove default damping #################################
-        # for i in range(self.NUM_DRONES):
-        #     p.changeDynamics(self.DRONE_IDS[i], -1, linearDamping=0, angularDamping=0)
-        for i in range(self.NUM_DRONES):
-            #### Show the frame of reference of the drone, note that ###
-            #### It severly slows down the GUI #########################
-            if self.GUI and self.USER_DEBUG:
-                self._showDroneLocalAxes(i)
-            #### Disable collisions between drones' and the ground plane
-            #### E.g., to start a drone at [0,0,0] #####################
-            # p.setCollisionFilterPair(bodyUniqueIdA=self.PLANE_ID, bodyUniqueIdB=self.DRONE_IDS[i], linkIndexA=-1, linkIndexB=-1, enableCollision=0, physicsClientId=self.CLIENT)
-        if self.OBSTACLES:
-            self.obs, self.g_udfs = self._loadTrack()
-    
