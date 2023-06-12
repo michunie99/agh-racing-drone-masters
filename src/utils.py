@@ -11,51 +11,60 @@ def calculateRelativeObseration(obj1, obj2):
     """
     obj = ([x, y, z], [qx, qy, qz, qw])
     """
-    p1, quat1 = obj1
-    p2, quat2 = obj2
-
     # TODO - keep info about quaterions and not shperical
+    pos1, ort1 = obj1
+    pos2, ort2 = obj2
 
-    # Step 1 - transform points to obj1 cooridinate system
-    # https://danceswithcode.net/engineeringnotes/quaternions/quaternions.html
-    vec = p2 - p1
-    qvec = np.array([vec[0], vec[1], vec[2], 0])
-    quat1_inv = inversQuaterion(quat1)
-    qrot_vec = quaternion_multiply(quaternion_multiply(quat1,qvec),quat1_inv)
-    rot_vec = qrot_vec[:-1]
+    # Step 1 - Vector between two points
+    vec_diff = pos2 - pos1
+    quat_diff = p.getDifferenceQuaternion(ort1, ort2)
+    inv_p, inv_o = p.invertTransform([0,0,0], ort1)
+    rot_vec, _ = p.multiplyTransforms(inv_p, inv_o,
+                               vec_diff, [0, 0, 0, 1])
 
     # Step 2 - calculate shperical coordinates
-    # https://en.wikipedia.org/wiki/Spherical_coordinate_system
-    r = np.sqrt(np.sum(rot_vec**2))
-    theta = np.arccos(rot_vec[2] / r)
-    phi = np.sign(rot_vec[1]) * \
-            np.arccos(rot_vec[0]/np.sqrt(np.sum(rot_vec[:1]**2)))
+    r, theta, phi = cart2shp(rot_vec)
     
     # Step 3 - calculate angle between normals
-    qobj_norm = np.array([0, 1, 0, 0])
-    quat2_inv = inversQuaterion(quat2)
-    obj_norm_cast = quaternion_multiply(quaternion_multiply(quat2_inv,qobj_norm),quat2)
-    obj_norm = obj_norm_cast[:-1]
-    vec_norm = vec / np.linalg.norm(vec)
-    alpha = np.arccos(np.dot(vec_norm, obj_norm))
+    _, alpha = p.getAxisAngleFromQuaternion(quat_diff)
 
     return [r, theta, phi], alpha
-    
-def inversQuaterion(quat):
-    quat = -1 * quat
-    quat[-1] = -quat[-1]
-    return quat
 
-def quaternion_multiply(quaternion1, quaternion0):
-    x0, y0, z0, w0 = quaternion0
-    x1, y1, z1, w1 = quaternion1
-    return np.array([x1 * w0 + y1 * z0 - z1 * y0 + w1 * x0,
-                     -x1 * z0 + y1 * w0 + z1 * x0 + w1 * y0,
-                     x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0,
-                     -x1 * x0 - y1 * y0 - z1 * z0 + w1 * w0], dtype=np.float64)
+def cart2shp(cart):
+    sph = np.empty((3,1))
+    xy = cart[0]**2 + cart[1]**2
+    sph[0] = np.sqrt(xy + cart[2]**2)
+    sph[1] = np.arctan2(np.sqrt(xy), cart[2]) # for elevation angle defined from Z-axis down
+    # sph[1] = np.arctan2(cart[2], np.sqrt(xy)) # for elevation angle defined from XY-plane up
+    sph[2] = np.arctan2(cart[1], cart[0])
+    return sph
+
 
 if __name__ == "__main__":
-    obj1 = (np.array([0, 0, 0]), np.array([0, 0, 0, 1]))
-    obj2 = (np.array([0, 1, 0]), np.array([0.0, 0.0, 0.3826834323650898, 0.9238795325112867]))
+    # Apply transfor and rotation to arg1 by arg2
+    obj1 = np.array([0,0,0]), np.array([0.0,0,0.0,1])
+    obj2 = np.array([1,1,1]), np.array([0.0, 0.0, 0.7071067811865475, 0.7071067811865476])
 
-    print(calculateRelativeObseration(obj1, obj2))
+    pos1, ort1 = obj1
+    pos2, ort2 = obj2
+
+    # Vector between two points
+    vec_diff = pos2 - pos1
+    quat_diff = p.getDifferenceQuaternion(ort1, ort2)
+
+    # Angle
+    inv_p, inv_o = p.invertTransform([0,0,0], ort1)
+    print(p.multiplyTransforms(inv_p, inv_o,
+                               vec_diff, [0, 0, 0, 1]))
+    print(p.getAxisAngleFromQuaternion(quat_diff))
+    # print(vec_diff, quat_diff)
+    # print(p.multiplyTransforms(pos1, ort1,
+    #                            vec_diff, quat_diff))
+    
+    # print(vec_diff)
+    # print(p.getEulerFromQuaternion(quat_diff))
+    # r = np.sqrt(np.sum(vec_diff**2))
+    # print(p.multiplyTransforms([1,1,1], [0.0,0,0.0,1],
+    #                            [1,1,1], [0.0, 0.0, 0.7071067811865475, 0.7071067811865476]))
+    
+    # print(p.invertTransform([1,1,1], [0.0,0,0.0,1]))
