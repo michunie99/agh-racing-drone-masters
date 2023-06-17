@@ -56,6 +56,8 @@ if __name__ == "__main__":
     print(p.multiplyTransforms(inv_p, inv_o,
                                vec_diff, [0, 0, 0, 1]))
     print(p.getAxisAngleFromQuaternion(quat_diff))
+
+    calculateRelativeObseration()
     # print(vec_diff, quat_diff)
     # print(p.multiplyTransforms(pos1, ort1,
     #                            vec_diff, quat_diff))
