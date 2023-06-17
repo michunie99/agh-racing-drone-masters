@@ -51,6 +51,8 @@ DEFAULT_CONTROL_FREQ_HZ = 48
 DEFAULT_DURATION_SEC = 12
 DEFAULT_OUTPUT_FOLDER = 'results'
 DEFAULT_COLAB = False
+GATES_LOOKUP = 0
+SCORE_RADIUS = 0.2
 
 env = RaceAviary(drone_model=DEFAULT_DRONES,
                     initial_xyzs=None,
@@ -59,6 +61,8 @@ env = RaceAviary(drone_model=DEFAULT_DRONES,
                     freq=DEFAULT_SIMULATION_FREQ_HZ,
                     gui=DEFAULT_GUI,
                     record=DEFAULT_RECORD_VISION,
+                    gates_lookup=GATES_LOOKUP,
+                    score_radius=SCORE_RADIUS,
                     )
 
 #### Obtain the PyBullet Client ID from the environment ####
@@ -68,10 +72,11 @@ PYB_CLIENT = env.getPyBulletClient()
 
 while True:
     obs, reward, terminated, truncated, info = env.step([0,0,0,0])
-
+    if reward != 0:
+        print(reward)
     if terminated or truncated:
         break
 
-    print(obs)
+    # print(obs)
     
     # env.render()

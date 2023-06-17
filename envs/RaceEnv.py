@@ -1,5 +1,7 @@
 import sys
 import time
+from collections import deque
+from itertools import cycle
 
 import numpy as np
 from gymnasium import spaces
@@ -13,7 +15,7 @@ from gym_pybullet_drones.envs.BaseAviary import BaseAviary
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 
 from src.track_loader import TrackLoader
-
+from src.utils import calculateRelativeObseration
 class RaceAviary(BaseAviary):
     """Multi-drone environment class for control applications."""
 
@@ -31,7 +33,8 @@ class RaceAviary(BaseAviary):
                  record=False,
                  user_debug_gui=True,
                  output_folder='results',
-                 gates_lookup=1,
+                 gates_lookup=0,
+                 score_radius=0.1,
                  normalize_state=False,
                  track_path="tracks/sample_track.csv"
                  ):
@@ -66,12 +69,15 @@ class RaceAviary(BaseAviary):
 
         """
         self.gates_lookup=gates_lookup
+        self.score_radius=score_radius
         self.normlize_state=normalize_state
 
         self.track_path=track_path
         self.track_loader=TrackLoader(self.track_path)
         self.NUMBER_GATES=len(self.track_loader)
-        self.obs_size=19 + (self.NUMBER_GATES-1)*4
+        self.obs_size=18 + (self.gates_lookup+1)*4
+        self.current_gete=None
+        self.track_progress = [False for _ in range(self.NUMBER_GATES)]
 
         super().__init__(drone_model=drone_model,
                          num_drones=1,
@@ -94,8 +100,11 @@ class RaceAviary(BaseAviary):
     ################################################################################
     def _addObstacles(self):
         obs, ids = self.track_loader.loadTrack(self.CLIENT)
-        self.GATE_IDS = ids
+        self.GATE_IDS = ids #TODO: may be cycle ?
         self.OBS = obs
+
+        # Add current gate to be gate 0
+        self.current_gate_idx = 0
 
     ################################################################################
     def _actionSpace(self):
@@ -153,13 +162,23 @@ class RaceAviary(BaseAviary):
 
         if self.normlize_state:
             state = self._clipAndNormalizeState(state)
+        
+        # Calculate obseraction between drone and gate
+        # obj = ([x, y, z], [qx, qy, qz, qw])
+        drone_obj = state[0:3], state[3:7]
+        gate_obj = p.getBasePositionAndOrientation(self.GATE_IDS[self.current_gate_idx], 
+                                                   self.CLIENT)
+        drone2gate = calculateRelativeObseration(drone_obj, gate_obj)
+        gates = [drone2gate, *self.OBS[:self.gates_lookup]]
 
         rot_matrix = p.getMatrixFromQuaternion(state[3:7])
-        # gates = self.gates_queue[:self.gates_lookup]
-        gates = self.OBS
         acc = self._calculateAcceleration()
-        # TODO fix obervations !!!
-        obs = np.hstack([state[9:13], acc, rot_matrix, state[12:15], gates[0]]).reshape(self.obs_size,)
+
+        obs = np.hstack([state[10:13], 
+                         acc, 
+                         rot_matrix, 
+                         state[13:16], 
+                         *gates]).reshape(self.obs_size,)
         return obs.astype('float32')
 
 
@@ -189,12 +208,25 @@ class RaceAviary(BaseAviary):
             Dummy value.
 
         """
-        return -1
+        reward = 0
+
+        # Gate scored
+        scored = self._gateScored(self.score_radius)
+        
+        if scored:
+            reward += 100
+            self.current_gate_idx += 1
+
+        
+        
+        return reward
 
     ################################################################################
     
     def _computeTerminated(self):
         """Computes the current terminated value(s)."""
+        if self.current_gate_idx == self.NUMBER_GATES:
+            return True
         return False
         if len(p.getContactPoints(self.DRONE_IDS[0], self.CLIENT)):
             return True
@@ -202,6 +234,19 @@ class RaceAviary(BaseAviary):
     
     ################################################################################
     
+    def _gateScored(self, thr):
+        """ Compute if flew throught a gate """
+        state = self._getDroneStateVector(0)
+        drone_obj = state[0:3], state[3:7]
+        gate_obj = p.getBasePositionAndOrientation(self.GATE_IDS[self.current_gate_idx], 
+                                                   self.CLIENT)
+        r, _, _, _ = calculateRelativeObseration(drone_obj, gate_obj)
+
+        if r < thr:
+            return True
+        else: 
+            return False
+
     def _computeTruncated(self):
         """Computes the current truncated value(s).
 

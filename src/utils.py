@@ -30,6 +30,7 @@ def calculateRelativeObseration(obj1, obj2):
 
     return np.array([r, theta, phi, alpha]).astype('float32')
 
+
 def cart2shp(cart):
     xy = cart[0]**2 + cart[1]**2
     r = np.sqrt(xy + cart[2]**2)
@@ -57,7 +58,7 @@ if __name__ == "__main__":
                                vec_diff, [0, 0, 0, 1]))
     print(p.getAxisAngleFromQuaternion(quat_diff))
 
-    calculateRelativeObseration()
+    # calculateRelativeObseration()
     # print(vec_diff, quat_diff)
     # print(p.multiplyTransforms(pos1, ort1,
     #                            vec_diff, quat_diff))
