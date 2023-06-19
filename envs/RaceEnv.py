@@ -15,7 +15,7 @@ from gym_pybullet_drones.envs.BaseAviary import BaseAviary
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 
 from src.track_loader import TrackLoader
-from src.utils import calculateRelativeObseration
+from src.utils import calculateRelativeObseration, ProgresPath
 class RaceAviary(BaseAviary):
     """Multi-drone environment class for control applications."""
 
@@ -76,7 +76,9 @@ class RaceAviary(BaseAviary):
         self.track_loader=TrackLoader(self.track_path)
         self.NUMBER_GATES=len(self.track_loader)
         self.obs_size=18 + (self.gates_lookup+1)*4
-        self.current_gete=None
+        self.current_gate=None
+
+        self.progress_tracker=ProgresPath()
         self.track_progress = [False for _ in range(self.NUMBER_GATES)]
 
         super().__init__(drone_model=drone_model,
@@ -105,6 +107,15 @@ class RaceAviary(BaseAviary):
 
         # Add current gate to be gate 0
         self.current_gate_idx = 0
+
+        # Update track progress tracker
+        start_gate = p.getBasePositionAndOrientation(self.GATE_IDS[self.current_gate_idx], 
+                                                    self.CLIENT)
+        # state = self._getDroneStateVector(0)
+        # drone_pos = state[0:3]
+
+        drone_pos = self.INIT_XYZS[0,:]
+        self.progress_tracker.updatePoints(drone_pos, start_gate[0])
 
     ################################################################################
     def _actionSpace(self):
@@ -212,11 +223,24 @@ class RaceAviary(BaseAviary):
 
         # Gate scored
         scored = self._gateScored(self.score_radius)
+        state = self._getDroneStateVector(0)
+        drone_pos = state[0:3]
         
         if scored:
             reward += 100
-            self.current_gate_idx += 1
+            self.current_gate_idx = self.current_gate_idx + 1
+            
+            if self.current_gate_idx == self.NUMBER_GATES:
+                return reward
 
+            # Update gate tracker
+            start_gate = p.getBasePositionAndOrientation(self.GATE_IDS[self.current_gate_idx], 
+                                                    self.CLIENT)
+            self.progress_tracker.updatePoints(drone_pos, start_gate[0])
+
+        else:
+            # TODO: add cooeficient for progress reward
+            reward += self.progress_tracker.calculateProgres(drone_pos)
         
         
         return reward

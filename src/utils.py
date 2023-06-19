@@ -39,24 +39,73 @@ def cart2shp(cart):
     phi = np.arctan2(cart[1], cart[0])
     return r, theta, phi
 
+class ProgresPath():
+    def __init__(self):
+        self.initialized = False
+
+    def updatePoints(self, p_start, p_end):
+        # Update line points
+        self.p_start = p_start
+        self.p_end = p_end
+
+        # Calculate the line vector
+        diff_vec = p_end - p_start
+        self.vec_len = np.linalg.norm(diff_vec)
+        self.unit_vec = diff_vec / self.vec_len
+
+        # Reset progress
+        self.last_poss = 0
+        self.progress = 0
+        self.initialized = True
+        
+
+    def _castPoint(self, unit_vec, p_start, point):
+        # Move origin to start point
+        point = point - p_start
+        
+        if np.linalg.norm(unit_vec) != 1.0:
+            unit_vec = unit_vec / np.linalg.norm(unit_vec)
+
+        # Cast point to the line defined by the unit vector
+        l_cast = np.dot(unit_vec, point)
+
+        return l_cast
+
+
+    def calculateProgres(self, point):
+        if not self.initialized:
+            raise "Points not initialized"
+        
+        # Cast point to the line 
+        l_cast = self._castPoint(   self.unit_vec, 
+                                    self.p_start,
+                                    point)
+        
+        # Calculate progress and normalize to the length of path
+        self.progress = (l_cast-self.last_poss) / self.vec_len
+        
+        self.last_poss = l_cast
+
+        return self.progress
+
 
 if __name__ == "__main__":
-    # Apply transfor and rotation to arg1 by arg2
-    obj1 = np.array([0,0,0]), np.array([0.0,0,0.0,1])
-    obj2 = np.array([1,1,1]), np.array([0.0, 0.0, 0.7071067811865475, 0.7071067811865476])
+    # # Apply transfor and rotation to arg1 by arg2
+    # obj1 = np.array([0,0,0]), np.array([0.0,0,0.0,1])
+    # obj2 = np.array([1,1,1]), np.array([0.0, 0.0, 0.7071067811865475, 0.7071067811865476])
 
-    pos1, ort1 = obj1
-    pos2, ort2 = obj2
+    # pos1, ort1 = obj1
+    # pos2, ort2 = obj2
 
-    # Vector between two points
-    vec_diff = pos2 - pos1
-    quat_diff = p.getDifferenceQuaternion(ort1, ort2)
+    # # Vector between two points
+    # vec_diff = pos2 - pos1
+    # quat_diff = p.getDifferenceQuaternion(ort1, ort2)
 
-    # Angle
-    inv_p, inv_o = p.invertTransform([0,0,0], ort1)
-    print(p.multiplyTransforms(inv_p, inv_o,
-                               vec_diff, [0, 0, 0, 1]))
-    print(p.getAxisAngleFromQuaternion(quat_diff))
+    # # Angle
+    # inv_p, inv_o = p.invertTransform([0,0,0], ort1)
+    # print(p.multiplyTransforms(inv_p, inv_o,
+    #                            vec_diff, [0, 0, 0, 1]))
+    # print(p.getAxisAngleFromQuaternion(quat_diff))
 
     # calculateRelativeObseration()
     # print(vec_diff, quat_diff)
@@ -70,3 +119,19 @@ if __name__ == "__main__":
     #                            [1,1,1], [0.0, 0.0, 0.7071067811865475, 0.7071067811865476]))
     
     # print(p.invertTransform([1,1,1], [0.0,0,0.0,1]))
+
+    progress = ProgresPath()
+
+    progress.updatePoints(np.array([0, 0, 0]), np.array([1, 1, 1]))
+
+    print('unit_vec', progress.unit_vec)
+    print('vec_norm', np.linalg.norm(progress.unit_vec))
+    print('vec_len', progress.vec_len)
+
+    print()
+    print('calculate progress', progress.calculateProgres(np.array([0.5, 0.5, 0])))
+    print('last_poss', progress.last_poss)
+
+    print()
+    print('calculate progress', progress.calculateProgres(np.array([1, 1, 0])))
+    print('last_poss', progress.last_poss)
