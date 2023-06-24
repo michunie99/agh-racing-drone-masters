@@ -36,7 +36,9 @@ class RaceAviary(BaseAviary):
                  gates_lookup=0,
                  score_radius=0.1,
                  normalize_state=False,
-                 track_path="tracks/sample_track.csv"
+                 track_path="tracks/sample_track.csv",
+                 world_box_size=[5, 5, 3],
+                 progress_coef=5,
                  ):
         """Initialization of an aviary environment for control applications.
 
@@ -78,10 +80,13 @@ class RaceAviary(BaseAviary):
         self.obs_size=18 + (self.gates_lookup+1)*4
         self.current_gate=None
         self.prev_vel=0
+        self.world_box_size=np.array(world_box_size)
+        
 
         self.progress_tracker=ProgresPath()
         self.track_progress = [False for _ in range(self.NUMBER_GATES)]
-
+        self.progress_coef=progress_coef
+        
         super().__init__(drone_model=drone_model,
                          num_drones=1,
                          neighbourhood_radius=neighbourhood_radius,
@@ -142,8 +147,8 @@ class RaceAviary(BaseAviary):
                           action
                           ):
         """Pre-processes the action passed to `.step()` into motors' RPMs. """
-        #TODO - netwrok output to RPM
-        return action
+        clipped_action = np.clip(np.array(action), 0, self.MAX_RPM)
+        return clipped_action
 
     ################################################################################
     def _observationSpace(self):
@@ -201,7 +206,7 @@ class RaceAviary(BaseAviary):
         # print(self.prev_vel[0])
         acc = (vel - self.prev_vel) * self.SIM_FREQ
         self.prev_vel = vel
-        print(acc)
+        # print(acc)
         return acc
     
     ################################################################################
@@ -225,7 +230,7 @@ class RaceAviary(BaseAviary):
             Dummy value.
 
         """
-        reward = 0
+        reward = -1
 
         # Gate scored
         scored = self._gateScored(self.score_radius)
@@ -246,8 +251,9 @@ class RaceAviary(BaseAviary):
 
         else:
             # TODO: add cooeficient for progress reward
-            reward += self.progress_tracker.calculateProgres(drone_pos)
+            reward += self.progress_tracker.calculateProgres(drone_pos) * self.progress_coef
         
+        # TODO: add gate field reward
         
         return reward
 
@@ -255,6 +261,13 @@ class RaceAviary(BaseAviary):
     
     def _computeTerminated(self):
         """Computes the current terminated value(s)."""
+        state = self._getDroneStateVector(0)
+        pos = state[0:3]
+        # print(np.abs(pos) > self.world_box_size)
+        # Flew too far
+        if np.any(np.abs(pos) > self.world_box_size):
+            return True
+        
         
         # Terminate when tack ended
         if self.current_gate_idx == self.NUMBER_GATES:
