@@ -77,6 +77,7 @@ class RaceAviary(BaseAviary):
         self.NUMBER_GATES=len(self.track_loader)
         self.obs_size=18 + (self.gates_lookup+1)*4
         self.current_gate=None
+        self.prev_vel=0
 
         self.progress_tracker=ProgresPath()
         self.track_progress = [False for _ in range(self.NUMBER_GATES)]
@@ -195,8 +196,13 @@ class RaceAviary(BaseAviary):
 
     ################################################################################
     def _calculateAcceleration(self):
-        #TODO
-        return np.array([0, 0, 0])
+        state = self._getDroneStateVector(0)
+        vel = state[10:13]
+        # print(self.prev_vel[0])
+        acc = (vel - self.prev_vel) * self.SIM_FREQ
+        self.prev_vel = vel
+        print(acc)
+        return acc
     
     ################################################################################
     def _clipAndNormalizeState(self,
@@ -249,11 +255,17 @@ class RaceAviary(BaseAviary):
     
     def _computeTerminated(self):
         """Computes the current terminated value(s)."""
+        
+        # Terminate when tack ended
         if self.current_gate_idx == self.NUMBER_GATES:
             return True
-        return False
-        if len(p.getContactPoints(self.DRONE_IDS[0], self.CLIENT)):
+            
+        
+        # Termiante when detected collision
+        if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
+                                 physicsClientId=self.CLIENT)) != 0:
             return True
+
         return False
     
     ################################################################################
@@ -284,6 +296,14 @@ class RaceAviary(BaseAviary):
         """
         return False
 
+    ################################################################################
+
+    def _housekeeping(self):
+        super()._housekeeping()
+        
+        # My house keeping
+        self.current_gate_idx = 0
+        self.prev_vel = np.array([0, 0, 0])
     ################################################################################
     
     def _computeInfo(self):

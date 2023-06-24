@@ -65,14 +65,13 @@ env = RaceAviary(drone_model=DEFAULT_DRONES,
                     score_radius=SCORE_RADIUS,
                     )
 
-env.reset()
 #### Obtain the PyBullet Client ID from the environment ####
 PYB_CLIENT = env.getPyBulletClient()
 
 
 
 p.setGravity(0.0, 0.0, 0.0, physicsClientId=PYB_CLIENT)
-p.applyExternalForce(env.DRONE_IDS[0], -1, [0.8, 0, 0], [0, 0, 0], p.LINK_FRAME)
+# p.applyExternalForce(env.DRONE_IDS[0], -1, [0.1, 0, 0], [0, 0, 0], p.LINK_FRAME)
 
 progress = []
 i = 0
