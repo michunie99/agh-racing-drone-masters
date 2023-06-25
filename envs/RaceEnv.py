@@ -38,7 +38,7 @@ class RaceAviary(BaseAviary):
                  normalize_state=False,
                  track_path="tracks/sample_track.csv",
                  world_box_size=[5, 5, 3],
-                 progress_coef=5,
+                 progress_coef=5
                  ):
         """Initialization of an aviary environment for control applications.
 
@@ -82,6 +82,7 @@ class RaceAviary(BaseAviary):
         self.prev_vel=0
         self.world_box_size=np.array(world_box_size)
         
+        
 
         self.progress_tracker=ProgresPath()
         self.track_progress = [False for _ in range(self.NUMBER_GATES)]
@@ -99,7 +100,7 @@ class RaceAviary(BaseAviary):
                          record=record,
                          obstacles=True,
                          user_debug_gui=user_debug_gui,
-                         output_folder=output_folder
+                         output_folder=output_folder,
                          )
         
         
@@ -147,7 +148,7 @@ class RaceAviary(BaseAviary):
                           action
                           ):
         """Pre-processes the action passed to `.step()` into motors' RPMs. """
-        clipped_action = np.clip(np.array(action), 0, self.MAX_RPM)
+        clipped_action = (np.array(action) + 1) / 2 * self.MAX_RPM #TODO fix this
         return clipped_action
 
     ################################################################################
@@ -214,7 +215,7 @@ class RaceAviary(BaseAviary):
                                state
                                ):
         """Normalizes a drone's state to the [-1,1] range. """
-        #TODO
+        #TODO: add notmaliaztion from sampled obseravations
         return state
 
     ################################################################################
@@ -230,12 +231,14 @@ class RaceAviary(BaseAviary):
             Dummy value.
 
         """
-        reward = -1
+        reward = 0
 
         # Gate scored
         scored = self._gateScored(self.score_radius)
         state = self._getDroneStateVector(0)
         drone_pos = state[0:3]
+        
+        self._calculateRewardField()
         
         if scored:
             reward += 100
@@ -257,6 +260,31 @@ class RaceAviary(BaseAviary):
         
         return reward
 
+    ################################################################################
+    
+    def _calculateRewardField(self, wg=0.5, dmax=-1.5):
+        d_pos, _ = p.getBasePositionAndOrientation(self.DRONE_IDS[0])
+        g_pos, g_ort = p.getBasePositionAndOrientation(self.GATE_IDS[self.current_gate_idx])
+        
+        # diff_vec = np.array(d_pos) - np.array(g_pos)
+        diff_vec = np.array(g_pos) - np.array(d_pos)
+        # Transform drone position to gate reference frame
+        t_pos, _ = p.invertTransform(position=diff_vec,
+                                     orientation=g_ort)
+        
+        print(t_pos)
+        dn, dp = t_pos[0], np.sqrt(t_pos[1]**2 + t_pos[2]**2)
+        
+        # print(f"dn: {dn:0.4f}, dp: {dp:0.4f}")
+                
+        f = lambda x: max(1-x/dmax, 0.0)
+        v = lambda x, y: max((1- y) * (x/6.0), 0.05)
+
+        r = -f(dp)**2 * (1 - np.exp(-0.5 * dn**2 / v(wg, f(dp))))
+        
+        # print(r)
+        return 0
+    
     ################################################################################
     
     def _computeTerminated(self):

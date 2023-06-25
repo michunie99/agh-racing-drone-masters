@@ -36,6 +36,11 @@
       </geometry>
     </collision>
 
+    <inertial>
+      <mass value="10"/>
+      <inertia ixx="0.4" ixy="0.0" ixz="0.0" iyy="0.4" iyz="0.0" izz="0.2"/>
+    </inertial>
+
   </link>
 
   <link name="topBar">
@@ -53,6 +58,11 @@
         <box size=".1 .1 1" />
       </geometry>
     </collision>
+
+    <inertial>
+      <mass value="10"/>
+      <inertia ixx="0.4" ixy="0.0" ixz="0.0" iyy="0.4" iyz="0.0" izz="0.2"/>
+    </inertial>
 
   </link>
 
@@ -72,6 +82,11 @@
       </geometry>
     </collision>
 
+    <inertial>
+      <mass value="10"/>
+      <inertia ixx="0.4" ixy="0.0" ixz="0.0" iyy="0.4" iyz="0.0" izz="0.2"/>
+    </inertial>
+
   </link>
 
   <link name="rightBar">
@@ -90,6 +105,11 @@
       </geometry>
     </collision>
 
+    <inertial>
+      <mass value="10"/>
+      <inertia ixx="0.4" ixy="0.0" ixz="0.0" iyy="0.4" iyz="0.0" izz="0.2"/>
+    </inertial>
+
   </link>
 
   <link name="arrow">
@@ -100,6 +120,11 @@
       </geometry>
       <material name="Red"/>
     </visual>
+
+    <inertial>
+      <mass value="10"/>
+      <inertia ixx="0.4" ixy="0.0" ixz="0.0" iyy="0.4" iyz="0.0" izz="0.2"/>
+    </inertial>
 
   </link>
 
