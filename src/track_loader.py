@@ -44,6 +44,7 @@ class TrackLoader():
             
             track.append((asset_path, np.array(pos), 
                           np.array(ort), scale))
+            
 
         return track
             
@@ -82,6 +83,10 @@ class TrackLoader():
     
     def __len__(self):
         return len(self.track)
+    
+    @property
+    def gateWidth(self):
+        return [gate[-1] for gate in self.track]
     
 if __name__ == "__main__":
     import pybullet_data

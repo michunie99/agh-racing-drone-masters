@@ -16,6 +16,8 @@ from gym_pybullet_drones.utils.enums import DroneModel, Physics
 
 from src.track_loader import TrackLoader
 from src.utils import calculateRelativeObseration, ProgresPath
+from  .enums import ScoreType
+
 class RaceAviary(BaseAviary):
     """Multi-drone environment class for control applications."""
 
@@ -38,7 +40,12 @@ class RaceAviary(BaseAviary):
                  normalize_state=False,
                  track_path="tracks/sample_track.csv",
                  world_box_size=[5, 5, 3],
-                 progress_coef=5
+                 omega_coef=0.001,
+                 filed_coef=1,
+                 completion_type=ScoreType.PLANE,
+                 gate_filed_range=-1.5,
+                 pos_off=None,
+                 ort_off=None,
                  ):
         """Initialization of an aviary environment for control applications.
 
@@ -82,11 +89,24 @@ class RaceAviary(BaseAviary):
         self.prev_vel=0
         self.world_box_size=np.array(world_box_size)
         
-        
-
         self.progress_tracker=ProgresPath()
         self.track_progress = [False for _ in range(self.NUMBER_GATES)]
-        self.progress_coef=progress_coef
+
+        self.FILED_COEF=filed_coef
+        self.OMEGA_COEF=omega_coef
+        self.DMAX=-abs(gate_filed_range)
+        
+        self.completion_type=completion_type
+        
+        if pos_off:
+            self.POS_OFF=np.array(pos_off)
+        else:
+            self.POS_OFF=np.array([0, 0, 0])
+            
+        if ort_off:
+            self.ORT_OFF=np.array(ort_off)
+        else:
+            self.ORT_OFF=np.array([0, 0, 0])
         
         super().__init__(drone_model=drone_model,
                          num_drones=1,
@@ -109,9 +129,14 @@ class RaceAviary(BaseAviary):
     ################################################################################
     def _addObstacles(self):
         obs, ids = self.track_loader.loadTrack(self.CLIENT)
-        self.GATE_IDS = ids #TODO: may be cycle ?
+        self.GATE_IDS = ids
         self.OBS = obs
+        
+        self.gate_sizes=self.track_loader.gateWidth
 
+        # if self.GUI and self.USER_DEBUG:
+        #     for i in self.GATE_IDS:
+        #         self._showDroneLocalAxes(i) #TODO: fix 
         # Add current gate to be gate 0
         self.current_gate_idx = 0
 
@@ -123,6 +148,8 @@ class RaceAviary(BaseAviary):
 
         drone_pos = self.INIT_XYZS[0,:]
         self.progress_tracker.updatePoints(drone_pos, start_gate[0])
+        
+        
 
     ################################################################################
     def _actionSpace(self):
@@ -238,7 +265,43 @@ class RaceAviary(BaseAviary):
         state = self._getDroneStateVector(0)
         drone_pos = state[0:3]
         
-        self._calculateRewardField()
+        # Filed coeeficient
+        wg = self.gate_sizes[self.current_gate_idx]
+
+        d_pos, _ = p.getBasePositionAndOrientation(self.DRONE_IDS[0])
+        g_pos, g_ort = p.getBasePositionAndOrientation(self.GATE_IDS[self.current_gate_idx])
+        
+        # diff_vec = np.array(d_pos) - np.array(g_pos)
+        diff_vec = np.array(g_pos) - np.array(d_pos)
+        # Transform drone position to gate reference frame
+        t_pos, _ = p.invertTransform(position=diff_vec,
+                                     orientation=g_ort)
+        
+        # print(t_pos)
+        dp, dn = t_pos[0], np.sqrt(t_pos[1]**2 + t_pos[2]**2)
+        
+        # print(f"dn: {dn:0.4f}, dp: {dp:0.4f}")
+                
+        f = lambda x: max(1-x/self.DMAX, 0.0)
+        v = lambda x, y: max((1- y) * (x/6.0), 0.05)
+
+        filed_reward = -f(dp)**2 * (1 - np.exp(-0.5 * dn**2 / v(wg, f(dp))))
+        # print(filed_reward)
+        
+        reward += filed_reward * self.FILED_COEF
+        
+
+        # Add penaulty for gate colision
+        if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
+                                  bodyB=self.GATE_IDS[self.current_gate_idx],
+                                  physicsClientId=self.CLIENT)) != 0:
+            reward -= min((dn/wg)**2, 20)
+            
+        # Penaulty for floor collision
+        if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
+                                  bodyB=self.PLANE_ID,
+                                  physicsClientId=self.CLIENT)) != 0:
+            reward -= 100
         
         if scored:
             reward += 100
@@ -254,36 +317,17 @@ class RaceAviary(BaseAviary):
 
         else:
             # TODO: add cooeficient for progress reward
-            reward += self.progress_tracker.calculateProgres(drone_pos) * self.progress_coef
+            progress = self.progress_tracker.calculateProgres(drone_pos)
+            # print(progress)
+            reward += progress
         
-        # TODO: add gate field reward
+        # Add reguralization for the angular speed
+        omega = state[13:16]
+        omega_norm = max(np.linalg.norm(omega) ** 2, 20.0)
+        # print(omega_norm)
+        reward -= self.OMEGA_COEF * omega_norm
         
         return reward
-
-    ################################################################################
-    
-    def _calculateRewardField(self, wg=0.5, dmax=-1.5):
-        d_pos, _ = p.getBasePositionAndOrientation(self.DRONE_IDS[0])
-        g_pos, g_ort = p.getBasePositionAndOrientation(self.GATE_IDS[self.current_gate_idx])
-        
-        # diff_vec = np.array(d_pos) - np.array(g_pos)
-        diff_vec = np.array(g_pos) - np.array(d_pos)
-        # Transform drone position to gate reference frame
-        t_pos, _ = p.invertTransform(position=diff_vec,
-                                     orientation=g_ort)
-        
-        print(t_pos)
-        dn, dp = t_pos[0], np.sqrt(t_pos[1]**2 + t_pos[2]**2)
-        
-        # print(f"dn: {dn:0.4f}, dp: {dp:0.4f}")
-                
-        f = lambda x: max(1-x/dmax, 0.0)
-        v = lambda x, y: max((1- y) * (x/6.0), 0.05)
-
-        r = -f(dp)**2 * (1 - np.exp(-0.5 * dn**2 / v(wg, f(dp))))
-        
-        # print(r)
-        return 0
     
     ################################################################################
     
@@ -296,12 +340,10 @@ class RaceAviary(BaseAviary):
         if np.any(np.abs(pos) > self.world_box_size):
             return True
         
-        
         # Terminate when tack ended
         if self.current_gate_idx == self.NUMBER_GATES:
             return True
             
-        
         # Termiante when detected collision
         if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
                                  physicsClientId=self.CLIENT)) != 0:
@@ -313,16 +355,45 @@ class RaceAviary(BaseAviary):
     
     def _gateScored(self, thr):
         """ Compute if flew throught a gate """
-        state = self._getDroneStateVector(0)
-        drone_obj = state[0:3], state[3:7]
-        gate_obj = p.getBasePositionAndOrientation(self.GATE_IDS[self.current_gate_idx], 
-                                                   self.CLIENT)
-        r, _, _, _ = calculateRelativeObseration(drone_obj, gate_obj)
+        scored=False
+        
+        if self.completion_type==ScoreType.SHERE:
+            state = self._getDroneStateVector(0)
+            drone_obj = state[0:3], state[3:7]
+            gate_obj = p.getBasePositionAndOrientation(self.GATE_IDS[self.current_gate_idx], 
+                                                    self.CLIENT)
+            r, _, _, _ = calculateRelativeObseration(drone_obj, gate_obj)
 
-        if r < thr:
-            return True
-        else: 
-            return False
+            if r < thr:
+                scored = True
+        
+        elif self.completion_type==ScoreType.PLANE:
+            d_pos, _ = p.getBasePositionAndOrientation(self.DRONE_IDS[0])
+            g_pos, g_ort = p.getBasePositionAndOrientation(self.GATE_IDS[self.current_gate_idx])
+            
+            state = self._getDroneStateVector(0)
+            vel = state[10:13]
+        
+            # diff_vec = np.array(d_pos) - np.array(g_pos)
+            diff_vec = np.array(g_pos) - np.array(d_pos)
+            # Transform drone position to gate reference frame
+            t_pos, _ = p.invertTransform(position=diff_vec,
+                                        orientation=g_ort)
+            
+            # Transform velocity
+            t_vel, _ = p.invertTransform(position=vel,
+                                        orientation=g_ort)
+            wg = self.gate_sizes[self.current_gate_idx]
+            
+            x, y, z = t_pos[0], t_pos[1], t_pos[2]
+            
+            if (0.0 < abs(x) < 0.01 
+                and abs(y) < wg/2 
+                and abs(z) < wg/2
+                and t_vel[0] <= 0):
+                scored = True
+        
+        return scored
 
     def _computeTruncated(self):
         """Computes the current truncated value(s).
@@ -345,7 +416,49 @@ class RaceAviary(BaseAviary):
         # My house keeping
         self.current_gate_idx = 0
         self.prev_vel = np.array([0, 0, 0])
+        
+        # # TODO: add initial state randomization if flag specified
+        # for i in self.DRONE_IDS:
+        #     d_pos, d_ort = p.getBasePositionAndOrientation(i)
+        #     pos_off = self.POS_OFF * np.random.normal(  loc=0.0, 
+        #                                                 scale=1.0, 
+        #                                                 size=(3, ),
+        #                                                 )
+            
+        #     ort_off = self.ORT_OFF * np.random.normal(  loc=0.0, 
+        #                                                 scale=1.0, 
+        #                                                 size=(3, ),
+        #                                                 )
+        #     d_pos += pos_off
+        #     _, quat_off = p.getQuaternionFromEuler(ort_off)
+        #     d_ort = self._quaternionMultiply( d_ort, 
+        #                                         quat_off,
+        #                                      )
+        #     p.resetBasePositionAndOrientation(i, 
+        #                                       posObj=d_pos,
+        #                                       ornObj=d_ort,
+        #                                       physicsClientId=self.CLIENT,
+        #                                       )
     ################################################################################
+    
+    
+    def _quaternionMultiply(quaternion1, quaternion0):
+        """Return multiplication of two quaternions.
+
+            >>> q = quaternion_multiply([4, 1, -2, 3], [8, -5, 6, 7])
+            >>> numpy.allclose(q, [28, -44, -14, 48])
+            True
+
+            """
+        w0, x0, y0, z0 = quaternion0
+        w1, x1, y1, z1 = quaternion1
+        return np.array([
+            -x1 * x0 - y1 * y0 - z1 * z0 + w1 * w0, x1 * w0 + y1 * z0 - z1 * y0 + w1 * x0,
+            -x1 * z0 + y1 * w0 + z1 * x0 + w1 * y0, x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0
+        ],
+                            dtype=np.float64)
+     
+    ################################################################################   
     
     def _computeInfo(self):
         """Computes the current info dict(s).
