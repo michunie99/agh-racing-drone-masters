@@ -46,6 +46,7 @@ class RaceAviary(BaseAviary):
                  gate_filed_range=-1.5,
                  pos_off=None,
                  ort_off=None,
+                 floor=True,
                  ):
         """Initialization of an aviary environment for control applications.
 
@@ -97,6 +98,7 @@ class RaceAviary(BaseAviary):
         self.DMAX=-abs(gate_filed_range)
         
         self.completion_type=completion_type
+        self.floor=floor
         
         if pos_off:
             self.POS_OFF=np.array(pos_off)
@@ -163,11 +165,13 @@ class RaceAviary(BaseAviary):
 
         """
         #### Action vector ######## P0            P1            P2            P3
-        act_lower_bound = np.array([0.,           0.,           0.,           0.])
-        act_upper_bound = np.array([self.MAX_RPM, self.MAX_RPM, self.MAX_RPM, self.MAX_RPM])
+        # act_lower_bound = np.array([0.,           0.,           0.,           0.])
+        # act_upper_bound = np.array([self.MAX_RPM, self.MAX_RPM, self.MAX_RPM, self.MAX_RPM])
+        act_lower_bound = np.array([-1.,-1.,-1.,-1.])
+        act_upper_bound = np.array([1., 1., 1., 1.])
         return spaces.Box(  low=act_lower_bound,
                             high=act_upper_bound,
-                            dtype=np.float32)
+                            dtype=np.float64)
     
     ################################################################################
 
@@ -175,8 +179,12 @@ class RaceAviary(BaseAviary):
                           action
                           ):
         """Pre-processes the action passed to `.step()` into motors' RPMs. """
-        clipped_action = (np.array(action) + 1) / 2 * self.MAX_RPM #TODO fix this
-        return clipped_action
+        # clipped_action = (np.array(action) + 1) / 2 * self.MAX_RPM #TODO fix this
+            #     elif self.ACT_TYPE == ActionType.RPM:
+            # return np.array(self.HOVER_RPM * (1+0.05*action))
+        # Convert actions from [-1, 1] to [0, RPM_MAX]
+        action = self._normalizedActionToRPM(action)
+        return action
 
     ################################################################################
     def _observationSpace(self):
@@ -197,7 +205,7 @@ class RaceAviary(BaseAviary):
         # )             
         return spaces.Box( low=np.ones((self.obs_size, ))*-np.inf,
                             high=np.ones((self.obs_size, ))*np.inf,
-                            dtype=np.float32
+                            dtype=np.float64
         )
     ################################################################################
 
@@ -214,7 +222,7 @@ class RaceAviary(BaseAviary):
         gate_obj = p.getBasePositionAndOrientation(self.GATE_IDS[self.current_gate_idx], 
                                                    self.CLIENT)
         drone2gate = calculateRelativeObseration(drone_obj, gate_obj)
-        gates = [drone2gate, *self.OBS[:self.gates_lookup]]
+        gates = [drone2gate, *self.OBS[:self.gates_lookup]] #TODO - OBS not a cyclic structure
 
         rot_matrix = p.getMatrixFromQuaternion(state[3:7])
         acc = self._calculateAcceleration()
@@ -224,7 +232,7 @@ class RaceAviary(BaseAviary):
                          rot_matrix, 
                          state[13:16], 
                          *gates]).reshape(self.obs_size,)
-        return obs.astype('float32')
+        return obs.astype(np.float64)
 
 
     ################################################################################
@@ -250,12 +258,9 @@ class RaceAviary(BaseAviary):
     def _computeReward(self):
         """Computes the current reward value(s).
 
-        Unused as this subclass is not meant for reinforcement learning.
-
         Returns
         -------
         int
-            Dummy value.
 
         """
         reward = 0
@@ -292,17 +297,25 @@ class RaceAviary(BaseAviary):
         
 
         # Add penaulty for gate colision
-        if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
-                                  bodyB=self.GATE_IDS[self.current_gate_idx],
-                                  physicsClientId=self.CLIENT)) != 0:
-            reward -= min((dn/wg)**2, 20)
-            
-        # Penaulty for floor collision
-        if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
-                                  bodyB=self.PLANE_ID,
-                                  physicsClientId=self.CLIENT)) != 0:
-            reward -= 100
+        # if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
+                                #   bodyB=self.GATE_IDS[self.current_gate_idx],
+                                #   physicsClientId=self.CLIENT)) != 0:
+            # reward -= min((dn/wg)**2, 20)
         
+        dg = np.linalg.norm(diff_vec) # Reward for crash as in paper
+        if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
+                                  physicsClientId=self.CLIENT)) != 0:
+            reward -= min((dg/wg)**2, 20)
+            
+        # Add reguralization for the angular speed
+        omega = state[13:16]
+        omega_norm = np.linalg.norm(omega)**2
+        # print(omega_norm)
+        reward -= self.OMEGA_COEF * omega_norm
+        progress = self.progress_tracker.calculateProgres(drone_pos)
+            # print(progress)
+        reward += progress 
+              
         if scored:
             reward += 100
             self.current_gate_idx = self.current_gate_idx + 1
@@ -315,42 +328,34 @@ class RaceAviary(BaseAviary):
                                                     self.CLIENT)
             self.progress_tracker.updatePoints(drone_pos, start_gate[0])
 
-        else:
-            # TODO: add cooeficient for progress reward
-            progress = self.progress_tracker.calculateProgres(drone_pos)
-            # print(progress)
-            reward += progress
-        
-        # Add reguralization for the angular speed
-        omega = state[13:16]
-        omega_norm = max(np.linalg.norm(omega) ** 2, 20.0)
-        # print(omega_norm)
-        reward -= self.OMEGA_COEF * omega_norm
-        
         return reward
     
     ################################################################################
     
     def _computeTerminated(self):
         """Computes the current terminated value(s)."""
+
+        if self.current_gate_idx == self.NUMBER_GATES:
+            return True
+        
+        return False
+           
+    ################################################################################
+    def _computeTruncated(self):
         state = self._getDroneStateVector(0)
         pos = state[0:3]
         # print(np.abs(pos) > self.world_box_size)
         # Flew too far
         if np.any(np.abs(pos) > self.world_box_size):
+
             return True
         
-        # Terminate when tack ended
-        if self.current_gate_idx == self.NUMBER_GATES:
-            return True
-            
         # Termiante when detected collision
         if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
                                  physicsClientId=self.CLIENT)) != 0:
             return True
 
         return False
-    
     ################################################################################
     
     def _gateScored(self, thr):
@@ -395,19 +400,6 @@ class RaceAviary(BaseAviary):
         
         return scored
 
-    def _computeTruncated(self):
-        """Computes the current truncated value(s).
-
-        Unused as this subclass is not meant for reinforcement learning.
-
-        Returns
-        -------
-        bool
-            Dummy value.
-
-        """
-        return False
-
     ################################################################################
 
     def _housekeeping(self):
@@ -416,6 +408,9 @@ class RaceAviary(BaseAviary):
         # My house keeping
         self.current_gate_idx = 0
         self.prev_vel = np.array([0, 0, 0])
+        
+        if not self.floor:
+            p.removeBody(self.PLANE_ID, self.CLIENT)
         
         # # TODO: add initial state randomization if flag specified
         # for i in self.DRONE_IDS:
