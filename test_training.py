@@ -26,7 +26,7 @@ DEFAULT_DRONES = DroneModel("cf2x")
 DEFAULT_NUM_DRONES = 1
 DEFAULT_PHYSICS = Physics("pyb")
 DEFAULT_VISION = False
-DEFAULT_GUI = False
+DEFAULT_GUI = True
 DEFAULT_RECORD_VISION = False
 DEFAULT_PLOT = True
 DEFAULT_USER_DEBUG_GUI = False
@@ -41,12 +41,13 @@ GATES_LOOKUP = 0
 SCORE_RADIUS = 0.2
 WORLD_BOX_SIZE = [5, 5, 3]
 TRACK_PATH="tracks/single_gate.csv"
+#FILED_COEF=0.00001
 FILED_COEF=0.001
-OMEGA_COEF=0.00001
-GATE_FIELD_RANGE=-1.0
+OMEGA_COEF=0.0
+GATE_FIELD_RANGE=-1.5
 COMPLETION_TYPE=ScoreType.PLANE
 FLOOR=False
-
+DN_SCALE=0.7
 # register(
 #     id='race-aviary-v0',
 #     entry_point=RaceAviary( drone_model=DEFAULT_DRONES,
@@ -88,7 +89,8 @@ vec_env = DummyVecEnv([lambda: gym.make("race-aviary-v0",  drone_model=DEFAULT_D
                                      omega_coef=OMEGA_COEF,
                                      completion_type=COMPLETION_TYPE,
                                      gate_filed_range=GATE_FIELD_RANGE,
-                                     floor=FLOOR,) for _ in range(6)])
+                                     floor=FLOOR,
+                                     dn_scale=DN_SCALE) for _ in range(1)])
 
 print("[INFO] Action space:", vec_env.action_space)
 print("[INFO] Observation space:", vec_env.observation_space)
@@ -105,7 +107,8 @@ vec_env = VecMonitor(vec_env, filename=log_dir)
 # policy_kwargs = dict(activation_fn=torch.nn.Tanh, net_arch=[128, 128]) 
 model = PPO(DronePolicy, vec_env, verbose=1, tensorboard_log="./logs/ppo_test_drone/")
 # print(model.policy)
-model.learn(total_timesteps=8_000_000)
+model.learn(total_timesteps=40_00_000)
+
 
 model.save(log_dir + "ppo_race")
 stats_path = os.path.join(log_dir, "vec_normalize.pkl")

@@ -44,6 +44,7 @@ class RaceAviary(BaseAviary):
                  filed_coef=1,
                  completion_type=ScoreType.PLANE,
                  gate_filed_range=-1.5,
+                 dn_scale=2.0,
                  pos_off=None,
                  ort_off=None,
                  floor=True,
@@ -94,6 +95,7 @@ class RaceAviary(BaseAviary):
         self.track_progress = [False for _ in range(self.NUMBER_GATES)]
 
         self.FILED_COEF=filed_coef
+        self.DN_SCALE=dn_scale
         self.OMEGA_COEF=omega_coef
         self.DMAX=-abs(gate_filed_range)
         
@@ -276,8 +278,8 @@ class RaceAviary(BaseAviary):
         d_pos, _ = p.getBasePositionAndOrientation(self.DRONE_IDS[0])
         g_pos, g_ort = p.getBasePositionAndOrientation(self.GATE_IDS[self.current_gate_idx])
         
-        # diff_vec = np.array(d_pos) - np.array(g_pos)
-        diff_vec = np.array(g_pos) - np.array(d_pos)
+        diff_vec = np.array(d_pos) - np.array(g_pos)
+        # diff_vec = np.array(g_pos) - np.array(d_pos)
         # Transform drone position to gate reference frame
         t_pos, _ = p.invertTransform(position=diff_vec,
                                      orientation=g_ort)
@@ -290,8 +292,8 @@ class RaceAviary(BaseAviary):
         f = lambda x: max(1-x/self.DMAX, 0.0)
         v = lambda x, y: max((1- y) * (x/6.0), 0.05)
 
-        filed_reward = -f(dp)**2 * (1 - np.exp(-0.5 * dn**2 / v(wg, f(dp))))
-        # print(filed_reward)
+        filed_reward = -f(dp)**2 * (1 - np.exp(-self.DN_SCALE * dn**2 / v(wg, f(dp))))
+        # print("Field reward:", filed_reward)
         
         reward += filed_reward * self.FILED_COEF
         
@@ -313,20 +315,21 @@ class RaceAviary(BaseAviary):
         # print(omega_norm)
         reward -= self.OMEGA_COEF * omega_norm
         progress = self.progress_tracker.calculateProgres(drone_pos)
-            # print(progress)
+        # print("Progress:", progress)
         reward += progress 
               
         if scored:
-            reward += 100
+            # reward += 100
             self.current_gate_idx = self.current_gate_idx + 1
             
             if self.current_gate_idx == self.NUMBER_GATES:
                 return reward
 
             # Update gate tracker
+            old_gate = self.progress_tracker.p_end
             start_gate = p.getBasePositionAndOrientation(self.GATE_IDS[self.current_gate_idx], 
                                                     self.CLIENT)
-            self.progress_tracker.updatePoints(drone_pos, start_gate[0])
+            self.progress_tracker.updatePoints(old_gate, start_gate[0])
 
         return reward
     

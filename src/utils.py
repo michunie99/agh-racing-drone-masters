@@ -21,14 +21,12 @@ def calculateRelativeObseration(obj1, obj2):
     inv_p, inv_o = p.invertTransform([0,0,0], ort1)
     rot_vec, _ = p.multiplyTransforms(inv_p, inv_o,
                                vec_diff, [0, 0, 0, 1])
-
     # Step 2 - calculate shperical coordinates
     r, theta, phi = cart2shp(rot_vec)
-    
     # Step 3 - calculate angle between normals
     _, alpha = p.getAxisAngleFromQuaternion(quat_diff)
-
     return np.array([r, theta, phi, alpha]).astype('float32')
+    # return np.array([np.linalg.norm(vec_diff), *quat_diff]).astype('float64')
 
 
 def cart2shp(cart):
@@ -61,28 +59,30 @@ class ProgresPath():
 
     def _castPoint(self, unit_vec, p_start, point):
         # Move origin to start point
-        point = point - p_start
+        dist_vec = point - p_start
         
         if np.linalg.norm(unit_vec) != 1.0:
             unit_vec = unit_vec / np.linalg.norm(unit_vec)
 
         # Cast point to the line defined by the unit vector
-        l_cast = np.dot(unit_vec, point)
+        l_cast = np.dot(dist_vec, unit_vec)
 
         return l_cast
 
 
     def calculateProgres(self, point):
-        if not self.initialized:
-            raise "Points not initialized"
         
         # Cast point to the line 
         l_cast = self._castPoint(   self.unit_vec, 
-                                    self.p_start,
+                                    self.p_end,
                                     point)
         
         # Calculate progress and normalize to the length of path
-        self.progress = (l_cast-self.last_poss) / self.vec_len
+        if self.initialized:
+            self.last_poss = l_cast
+            self.initialized = False
+            
+        self.progress = (l_cast-self.last_poss)
         
         self.last_poss = l_cast
 
