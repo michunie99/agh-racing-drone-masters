@@ -48,6 +48,7 @@ class RaceAviary(BaseAviary):
                  pos_off=None,
                  ort_off=None,
                  floor=True,
+                 seed=42,
                  ):
         """Initialization of an aviary environment for control applications.
 
@@ -79,6 +80,7 @@ class RaceAviary(BaseAviary):
             Whether to draw the drones' axes and the GUI RPMs sliders.
 
         """
+        self.initialized = False
         self.gates_lookup=gates_lookup
         self.score_radius=score_radius
         self.normlize_state=normalize_state
@@ -103,15 +105,23 @@ class RaceAviary(BaseAviary):
         self.floor=floor
         
         if pos_off:
-            self.POS_OFF=np.array(pos_off)
+            self.pos_mean, self.pos_std = pos_off
+            # self.POS_OFF=np.array(pos_off)
         else:
-            self.POS_OFF=np.array([0, 0, 0])
+            self.pos_mean, self.pos_std = 0, 0
             
         if ort_off:
-            self.ORT_OFF=np.array(ort_off)
+            self.ort_mean, self.ort_std = ort_off
         else:
-            self.ORT_OFF=np.array([0, 0, 0])
-        
+            self.ort_mean, self.ort_std = 0, 0
+            
+        self.seed=seed
+        np.random.seed(self.seed)
+        self.infos = {
+            "TimeLimit.terminated": False,
+            "TimeLimit.truncated": False,
+        }
+           
         super().__init__(drone_model=drone_model,
                          num_drones=1,
                          neighbourhood_radius=neighbourhood_radius,
@@ -127,9 +137,11 @@ class RaceAviary(BaseAviary):
                          output_folder=output_folder,
                          )
         
+        # Necessary 
+        self.initial_xyz = self.INIT_XYZS
+        self.initial_rpy = self.INIT_RPYS
+        self.initialized = True
         
-
-
     ################################################################################
     def _addObstacles(self):
         obs, ids = self.track_loader.loadTrack(self.CLIENT)
@@ -234,7 +246,11 @@ class RaceAviary(BaseAviary):
                          rot_matrix, 
                          state[13:16], 
                          *gates]).reshape(self.obs_size,)
-        return obs.astype(np.float64)
+        
+        obs = obs.astype(np.float64)
+        if not self.infos["TimeLimit.terminated"] and not self.infos["TimeLimit.truncated"]: 
+            self.infos["terminal_observation"] = obs
+        return obs
 
 
     ################################################################################
@@ -337,28 +353,33 @@ class RaceAviary(BaseAviary):
     
     def _computeTerminated(self):
         """Computes the current terminated value(s)."""
-
-        if self.current_gate_idx == self.NUMBER_GATES:
-            return True
+        terminated = False
         
-        return False
+        if self.current_gate_idx == self.NUMBER_GATES:
+            terminated = True
+        
+        self.infos["TimeLimit.terminated"] = terminated
+        return terminated
            
     ################################################################################
     def _computeTruncated(self):
+        truncated = False 
+        
         state = self._getDroneStateVector(0)
         pos = state[0:3]
         # print(np.abs(pos) > self.world_box_size)
         # Flew too far
         if np.any(np.abs(pos) > self.world_box_size):
 
-            return True
+            truncated = True
         
         # Termiante when detected collision
         if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
                                  physicsClientId=self.CLIENT)) != 0:
-            return True
-
-        return False
+            truncated = True
+        
+        self.infos["TimeLimit.truncated"] = truncated
+        return truncated
     ################################################################################
     
     def _gateScored(self, thr):
@@ -406,6 +427,10 @@ class RaceAviary(BaseAviary):
     ################################################################################
 
     def _housekeeping(self):
+        
+        if self.initialized:
+            self.INIT_XYZS = self.initial_xyz + np.random.normal(self.pos_mean, self.pos_std)
+            self.INIT_RPYS = self.initial_rpy + np.random.normal(self.ort_mean, self.ort_std) 
         super()._housekeeping()
         
         # My house keeping
@@ -459,14 +484,6 @@ class RaceAviary(BaseAviary):
     ################################################################################   
     
     def _computeInfo(self):
-        """Computes the current info dict(s).
-
-        Unused as this subclass is not meant for reinforcement learning.
-
-        Returns
-        -------
-        dict[str, int]
-            Dummy value.
-
-        """
-        return {"answer": 42} #### Calculated by the Deep Thought supercomputer in 7.5M years
+        # Return the last observation on episode termination
+        
+        return self.infos

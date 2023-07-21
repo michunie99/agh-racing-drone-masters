@@ -90,7 +90,9 @@ vec_env = DummyVecEnv([lambda: gym.make("race-aviary-v0",  drone_model=DEFAULT_D
                                      completion_type=COMPLETION_TYPE,
                                      gate_filed_range=GATE_FIELD_RANGE,
                                      floor=FLOOR,
-                                     dn_scale=DN_SCALE) for _ in range(1)])
+                                     dn_scale=DN_SCALE,
+                                     ort_off=(0, 0.1)
+                                     ) for _ in range(1)])
 
 print("[INFO] Action space:", vec_env.action_space)
 print("[INFO] Observation space:", vec_env.observation_space)
@@ -107,7 +109,7 @@ vec_env = VecMonitor(vec_env, filename=log_dir)
 # policy_kwargs = dict(activation_fn=torch.nn.Tanh, net_arch=[128, 128]) 
 model = PPO(DronePolicy, vec_env, verbose=1, tensorboard_log="./logs/ppo_test_drone/")
 # print(model.policy)
-model.learn(total_timesteps=40_00_000)
+model.learn(total_timesteps=60_00_000)
 
 
 model.save(log_dir + "ppo_race")

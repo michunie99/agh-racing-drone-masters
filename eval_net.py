@@ -60,7 +60,10 @@ vec_env = DummyVecEnv([lambda: gym.make("race-aviary-v0",  drone_model=DEFAULT_D
                                      omega_coef=OMEGA_COEF,
                                      completion_type=COMPLETION_TYPE,
                                      gate_filed_range=GATE_FIELD_RANGE,
-                                     floor=FLOOR,) for _ in range(1)])
+                                     floor=FLOOR,
+                                     pos_off=None,
+                                     ort_off=(0, 0.2)
+) for _ in range(1)])
 
 print("[INFO] Action space:", vec_env.action_space)
 print("[INFO] Observation space:", vec_env.observation_space)
