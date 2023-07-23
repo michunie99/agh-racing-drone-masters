@@ -20,15 +20,15 @@ class DroneNetwork(nn.Module):
 
             # Policy network
             self.policy_net = nn.Sequential(
-                nn.Linear(feature_dim, 128), nn.ReLU(),
-                nn.Linear(128, 128), nn.ReLU(),
+                nn.Linear(feature_dim, 128), nn.Tanh(),
+                nn.Linear(128, 128), nn.Tanh(),
                 nn.Linear(128, last_layer_dim_pi), nn.Tanh()
             )
              
             # Value network
             self.value_net = nn.Sequential(
-                nn.Linear(feature_dim, 128), nn.ReLU(),
-                nn.Linear(128, 128), nn.ReLU(),
+                nn.Linear(feature_dim, 128), nn.Tanh(),
+                nn.Linear(128, 128), nn.Tanh(),
                 nn.Linear(128, last_layer_dim_vf), nn.Tanh()
             )
 
@@ -56,7 +56,7 @@ class DronePolicy(ActorCriticPolicy):
         **kwargs,
     ):
         # Disable orthogonal initialization
-        kwargs["ortho_init"] = False
+        kwargs["ortho_init"] = True
         super().__init__(
             observation_space,
             action_space,
