@@ -147,7 +147,7 @@ def run(args):
         ))
         
     callbacks.append(CheckpointCallback(
-            save_freq=1000,
+            save_freq=10000,
             save_path="./logs/models",
             name_prefix=f"{run_id}_race_model",
             save_replay_buffer=True,
