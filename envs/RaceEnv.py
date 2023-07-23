@@ -315,10 +315,10 @@ class RaceAviary(BaseAviary):
         
 
         # Add penaulty for gate colision
-        # if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
-                                #   bodyB=self.GATE_IDS[self.current_gate_idx],
-                                #   physicsClientId=self.CLIENT)) != 0:
-            # reward -= min((dn/wg)**2, 20)
+        if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
+                                  bodyB=self.GATE_IDS[self.current_gate_idx],
+                                  physicsClientId=self.CLIENT)) != 0:
+            reward -= min((dn/wg)**2, 20)
         
         dg = np.linalg.norm(diff_vec) # Reward for crash as in paper
         if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
@@ -335,7 +335,7 @@ class RaceAviary(BaseAviary):
         reward += progress 
               
         if scored:
-            # reward += 100
+            reward += 20
             self.current_gate_idx = self.current_gate_idx + 1
             
             if self.current_gate_idx == self.NUMBER_GATES:
@@ -437,8 +437,8 @@ class RaceAviary(BaseAviary):
         self.current_gate_idx = 0
         self.prev_vel = np.array([0, 0, 0])
         
-        if not self.floor:
-            p.removeBody(self.PLANE_ID, self.CLIENT)
+        # if not self.floor:
+        #     p.removeBody(self.PLANE_ID, self.CLIENT)
         
         # # TODO: add initial state randomization if flag specified
         # for i in self.DRONE_IDS:

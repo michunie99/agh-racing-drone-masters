@@ -70,11 +70,11 @@ print("[INFO] Observation space:", vec_env.observation_space)
 
 log_dir = "./logs/"# Use deterministic actions for evaluation
 
-stats_path = os.path.join(log_dir, "vec_normalize.pkl")
+stats_path = os.path.join('logs/models/21_07_23_15_36_race_exp_race_model_vecnormalize_50010000_steps.pkl')
 VecNormalize.load(stats_path, vec_env)
 vec_env.training = False
 vec_env.norm_reward = False
-model = PPO.load(log_dir + "ppo_race")
+model = PPO.load('logs/models/21_07_23_15_36_race_exp_race_model_50010000_steps.zip')
 obs = vec_env.reset()
 
 while True:
