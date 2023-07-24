@@ -49,9 +49,9 @@ def parse_args():
                         help="Gate lookup in the observation space")
     parser.add_argument("--world-box", type=list, default=[5, 5, 3],
                         help="Size of the world box")
-    parser.add_argument("--field-coef", type=float, default=0.001,
+    parser.add_argument("--field-coef", type=float, default=0.0005,
                         help="Gate filed coefficient in the reward")
-    parser.add_argument("--omega-coef", type=float, default=0.0001,
+    parser.add_argument("--omega-coef", type=float, default=0.00001,
                         help="Angular velocity coefficient in the reward")
     parser.add_argument("--compl-type", type=ScoreType, default=ScoreType.PLANE,
                         help="Way of determening if gate was passed succesfully")

@@ -336,7 +336,7 @@ class RaceAviary(BaseAviary):
         reward += progress 
               
         if scored:
-            reward += 100
+            # reward += 100
             self.current_gate_idx = self.current_gate_idx + 1
             
             if self.current_gate_idx == self.NUMBER_GATES:
