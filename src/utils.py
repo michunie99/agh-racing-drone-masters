@@ -30,11 +30,10 @@ def calculateRelativeObseration(obj1, obj2):
 
 
 def cart2shp(cart):
-    xy = cart[0]**2 + cart[1]**2
-    r = np.sqrt(xy + cart[2]**2)
-    theta = np.arctan2(np.sqrt(xy), cart[2]) # for elevation angle defined from Z-axis down
-    # sph[1] = np.arctan2(cart[2], np.sqrt(xy)) # for elevation angle defined from XY-plane up
-    phi = np.arctan2(cart[1], cart[0])
+    xy = np.sqrt(cart[0]**2 + cart[1]**2)
+    r = np.sqrt(xy**2 + cart[2]**2)
+    theta = np.arctan2(cart[1], cart[0]) # for elevation angle defined from Z-axis down
+    phi = np.arctan2(xy, cart[2])
     return r, theta, phi
 
 class ProgresPath():

@@ -4,6 +4,10 @@ from gymnasium import spaces
 from torch import nn
 from stable_baselines3.common.policies import ActorCriticPolicy
 
+def init_layer(layer):
+    nn.init.orthogonal_(layer.weight)
+    return layer
+
 class DroneNetwork(nn.Module):
     def __init__(
             self,
@@ -20,16 +24,16 @@ class DroneNetwork(nn.Module):
 
             # Policy network
             self.policy_net = nn.Sequential(
-                nn.Linear(feature_dim, 128), nn.Tanh(),
-                nn.Linear(128, 128), nn.Tanh(),
-                nn.Linear(128, last_layer_dim_pi), nn.Tanh()
+                init_layer(nn.Linear(feature_dim, 128)), nn.Tanh(),
+                init_layer(nn.Linear(128, 128)), nn.Tanh(),
+                init_layer(nn.Linear(128, last_layer_dim_pi)), nn.Tanh()
             )
              
             # Value network
             self.value_net = nn.Sequential(
-                nn.Linear(feature_dim, 128), nn.Tanh(),
-                nn.Linear(128, 128), nn.Tanh(),
-                nn.Linear(128, last_layer_dim_vf), nn.Tanh()
+                init_layer(nn.Linear(feature_dim, 128)), nn.Tanh(),
+                init_layer(nn.Linear(128, 128)), nn.Tanh(),
+                init_layer(nn.Linear(128, last_layer_dim_vf)), nn.Tanh()
             )
 
     def forward(self, features: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:

@@ -9,14 +9,13 @@ import pybullet as p
 import pybullet_data
 import pkg_resources
 
-
 sys.path.append(r'gym_pybullet_drones')
 from gym_pybullet_drones.envs.BaseAviary import BaseAviary
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 
 from src.track_loader import TrackLoader
 from src.utils import calculateRelativeObseration, ProgresPath
-from  .enums import ScoreType
+from .enums import ScoreType
 
 class RaceAviary(BaseAviary):
     """Multi-drone environment class for control applications."""

@@ -1,6 +1,8 @@
 import argparse
 import time
 from typing import Union
+import pickle
+from pathlib import Path
 
 import gymnasium as gym
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize, VecMonitor
@@ -30,9 +32,13 @@ def parse_args():
                         help="Number of time steps to run trainign")
     parser.add_argument("--num-valid", type=int, default=10,
                         help="Number of validation enviroments")
+    
     # TODO - add validation runs
     parser.add_argument("--time-valid", type=int, default=1_000,
                         help="Number of steps between validation steps")
+ 
+    parser.add_argument("--model-save-freq", type=int, default=1_000,
+                        help="Frequeny of model save")
     parser.add_argument("--num-env", type=int, default=6,
                         help="Number of parallel envirements to")
     parser.add_argument("--track-path", type=str, default='tracks/single_gate.csv',
@@ -65,8 +71,10 @@ def parse_args():
                         help="Discount factor in MDP")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed used for experiment")
-    parser.add_argument("--fine-tune", type=Union[str, None], default=None,
+    parser.add_argument("--model-path", type=Union[str, None], default=None,
                         help="Use a pretrained model to fine tune")
+    parser.add_argument("--norm-path", type=Union[str, None], default=None,
+                        help="Use pretrained vector normalization")
     
     # wb and logging
     parser.add_argument("--wb-logging", "-wb", action="store_true",
@@ -85,7 +93,7 @@ def make_env(args, gui):
     env_builder = lambda: gym.make(
         "race-aviary-v0",
         drone_model=DroneModel('cf2x'),
-        initial_xyzs=np.array([0, 0, 1]).reshape(1, 3),
+        initial_xyzs=np.array([0, 0, 1]).reshape(1, 3), # TODO - add to parser
         # TODO - change the intialil_xyzs
         initial_rpys=None,
         physics=Physics('pyb'),
@@ -110,16 +118,20 @@ def run(args):
     # Create enviroments
     envs = [make_env(args, args.gui) for _ in range(args.cpus)]
     vec_env = SubprocVecEnv(envs)
-        
+    
     # Create a normalization wrapper
-    vec_env = VecNormalize(
-        vec_env,
-        norm_obs=args.norm_obs,
-        norm_reward=args.norm_reward,
-        # TODO - add clipping in config
-    )
-
-
+    if not args.norm_path:
+        vec_env = VecNormalize(
+            vec_env,
+            norm_obs=args.norm_obs,
+            norm_reward=args.norm_reward,
+            # TODO - add clipping in config
+        )
+    else:
+        vec_env = VecNormalize.load(
+                args.norm_path,
+                vec_env
+        )
     # Add monitor wrapper
     vec_env = VecMonitor(
         vec_env,
@@ -129,48 +141,59 @@ def run(args):
     # Set up wdb
     curr_time = time.gmtime()
     run_id = f'{time.strftime("%d_%m_%y_%H_%M", curr_time)}_race_exp'
+    
+    # Create logs file
+    logs_path = Path(f"./logs/models/{run_id}")
+    if not logs_path.exists():
+        logs_path.mkdir(parents=True)
 
+    # Save args
+    with open(f"./logs/models/{run_id}/args.pkl", "bw") as f:
+        pickle.dump(args, f)
+    
     callbacks = []
     if args.wb_logging: 
         run = wandb.init(
             project="drone_race",
             config=args,
             sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
-            monitor_gym=True,  # auto-upload the videos of agents playing the game
-            save_code=True,  # optional
+            monitor_gym=False,  # auto-upload the videos of agents playing the game
+            save_code=False,  # optional
         )
         callbacks.append(WandbCallback(
-            gradient_save_freq=100,
-            model_save_path=f'models/{run.id}',
+            gradient_save_freq=1000,
+            #model_save_path=f'models/{run.id}',
             verbose=2,
             # TODO - what else to add ???
         ))
         
     callbacks.append(CheckpointCallback(
-            save_freq=10000,
-            save_path="./logs/models",
+            save_freq=args.model_save_freq,
+            save_path=f"./logs/models/{run_id}",
             name_prefix=f"{run_id}_race_model",
             save_replay_buffer=True,
             save_vecnormalize=True,
     ))
-     
-    model = PPO(
-        DronePolicy,
-        vec_env,
-        learning_rate=args.learning_rate,
-        gamma=args.gamma,
-        seed=args.seed,
-        verbose=1,
-        tensorboard_log="./logs/ppo_test_drone/", #TODO - run id
-    )
     
+    if not args.model_path:
+        model = PPO(
+            DronePolicy,
+            vec_env,
+            learning_rate=args.learning_rate,
+            gamma=args.gamma,
+            seed=args.seed,
+            verbose=1,
+            tensorboard_log="./logs/tensor_board/", #TODO - run id
+        )
+    else:
+        model = PPO.load(args.model_path)
+
     model.learn(
         total_timesteps=args.total_timesteps,
         callback=callbacks,
         tb_log_name=run_id,
     )
-    
-    
+    # TODO Add model save !!!
     run.finish()
     
 if __name__ == "__main__":
