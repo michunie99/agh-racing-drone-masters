@@ -315,16 +315,16 @@ class RaceAviary(BaseAviary):
 
         # Add penaulty for gate colision
         
+        #dg = np.linalg.norm(diff_vec) # Reward for crash as in paper
+        #if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
+        #                          bodyB=self.GATE_IDS[self.current_gate_idx],
+        #                          physicsClientId=self.CLIENT)) != 0:
+        #    reward -= min((dg/wg)**2, 20)
+        
         dg = np.linalg.norm(diff_vec) # Reward for crash as in paper
         if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
-                                  bodyB=self.GATE_IDS[self.current_gate_idx],
                                   physicsClientId=self.CLIENT)) != 0:
             reward -= min((dg/wg)**2, 20)
-        
-#        dg = np.linalg.norm(diff_vec) # Reward for crash as in paper
-#        if len(p.getContactPoints(bodyA=self.DRONE_IDS[0],
-#                                  physicsClientId=self.CLIENT)) != 0:
-#            reward -= min((dg/wg)**2, 20)
             
         # Add reguralization for the angular speed
         omega = state[13:16]
