@@ -2,6 +2,7 @@ import argparse
 import time
 from typing import Union
 import pickle
+from pathlib import Path
 
 import gymnasium as gym
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize, VecMonitor
@@ -23,18 +24,20 @@ def parse_args():
                         help="Number of validation enviroments")
     parser.add_argument("--track-path", type=str, default='tracks/single_gate.csv',
                             help="Path for the track file")
-    parser.add_argument("--model-path", type=str, default=None,
-                        help="Name of the model to evaluate")
-    parser.add_argument("--norm-path", type=str, default=None,
-                        help="Path to normaliztion script")
-    parser.add_argument("--args-path", type=str, default=None,
-                        help="Path to model save args")
+    parser.add_argument("--model-dir", type=str, default=None,
+                        help="path to models dir")
+    parser.add_argument("--run-number", type=int, default=None,
+                        help="number of run to run")
+#    parser.add_argument("--norm-path", type=str, default=None,
+#                        help="Path to normaliztion script")
+#    parser.add_argument("--args-path", type=str, default=None,
+#                        help="Path to model save args")
     
     args = parser.parse_args()
     return args
 
-def load_experiment(args):
-    with open(args.args_path, "br") as f:
+def load_experiment(args_path):
+    with open(args_path, "br") as f:
         o_args = pickle.load(f)
     return o_args 
 
@@ -66,22 +69,25 @@ def make_env(args, gui):
     return env
 
 def run(args):
-    
-    env_args = load_experiment(args)
+    model_dir = Path(args.model_dir)
+    model_path = model_dir / f"{model_dir.stem}_race_model_{args.run_number}_steps.zip"
+    norm_path = model_dir / f"{model_dir.stem}_race_model_vecnormalize_{args.run_number}_steps.pkl"
+    args_path = model_dir / "args.pkl"
+    env_args = load_experiment(args_path)
 
     # Create enviroments
     env = make_env(env_args, True)
         
     # Create a normalization wrapper
     env = VecNormalize.load(
-            args.norm_path,
+            norm_path,
             env,
     )
 
     env.training = False
     env.norm_reward = False
 
-    model = PPO.load(args.model_path)
+    model = PPO.load(model_path)
 
     mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=50)
     print(f"Mean reward = {mean_reward:.2f} +/- {std_reward:.2f}")

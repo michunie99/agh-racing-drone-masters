@@ -71,10 +71,11 @@ def parse_args():
                         help="Discount factor in MDP")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed used for experiment")
-    parser.add_argument("--model-path", type=Union[str, None], default=None,
-                        help="Use a pretrained model to fine tune")
-    parser.add_argument("--norm-path", type=Union[str, None], default=None,
-                        help="Use pretrained vector normalization")
+    parser.add_argument("--model-dir", type=str, default=None,
+                        help="path to models dir")
+    parser.add_argument("--run-number", type=int, default=None,
+                        help="number of run to run")
+    
     
     # wb and logging
     parser.add_argument("--wb-logging", "-wb", action="store_true",
@@ -116,22 +117,28 @@ def make_env(args, gui):
 
 def run(args):
     # Create enviroments
+        
     envs = [make_env(args, args.gui) for _ in range(args.cpus)]
     vec_env = SubprocVecEnv(envs)
-    
-    # Create a normalization wrapper
-    if not args.norm_path:
+        
+    if args.model_dir and args.run_number:
+        model_dir = Path(args.model_dir)
+        model_path = model_dir / f"{model_dir.stem}_race_model_{args.run_number}_steps.zip"
+        norm_path = model_dir / f"{model_dir.stem}_race_model_vecnormalize_{args.run_number}_steps.pkl"
+        
+        vec_env = VecNormalize.load(
+                norm_path,
+                vec_env
+        )
+    else:
+        # Create a normalization wrapper
         vec_env = VecNormalize(
             vec_env,
             norm_obs=args.norm_obs,
             norm_reward=args.norm_reward,
             # TODO - add clipping in config
         )
-    else:
-        vec_env = VecNormalize.load(
-                args.norm_path,
-                vec_env
-        )
+
     # Add monitor wrapper
     vec_env = VecMonitor(
         vec_env,
@@ -175,7 +182,7 @@ def run(args):
             save_vecnormalize=True,
     ))
     
-    if not args.model_path:
+    if not args.model_dir:
         model = PPO(
             DronePolicy,
             vec_env,
@@ -186,7 +193,10 @@ def run(args):
             tensorboard_log="./logs/tensor_board/", #TODO - run id
         )
     else:
-        model = PPO.load(args.model_path)
+        model = PPO.load(
+                model_path,
+                vec_env,
+      )
 
     model.learn(
         total_timesteps=args.total_timesteps,
@@ -194,7 +204,9 @@ def run(args):
         tb_log_name=run_id,
     )
     # TODO Add model save !!!
-    run.finish()
+
+    if args.wb_logging: 
+        run.finish()
     
 if __name__ == "__main__":
     args = parse_args()
