@@ -56,7 +56,7 @@ class ProgresPath():
         self.initialized = True
         
 
-    def _castPoint(self, unit_vec, p_start, point):
+    def _castPoint(self, unit_vec, point, p_start):
         # Move origin to start point
         dist_vec = point - p_start
         
@@ -81,7 +81,7 @@ class ProgresPath():
             self.last_poss = l_cast
             self.initialized = False
             
-        self.progress = (l_cast-self.last_poss)
+        self.progress = (self.last_poss-l_cast)/self.vec_len
         
         self.last_poss = l_cast
 

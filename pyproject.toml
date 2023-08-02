@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "drone-rl"
+version = "0.1.0"
+description = ""
+authors = ["michal_niedbala <mniedbala99@gmail.com>"]
+readme = "README.md"
+packages = [{include = "drone_rl", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+numpy = "^1.25.2"
+matplotlib = "^3.7.2"
+wandb = "^0.15.8"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

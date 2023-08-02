@@ -9,6 +9,7 @@ import pybullet as p
 import numpy as np
 
 from src.utils import calculateRelativeObseration
+from src.track import Gate, Segment, Track
 
 class TrackLoader():
     def __init__(self,
@@ -75,6 +76,28 @@ class TrackLoader():
 
         return g_urdfs
 
+    def _createSegTrack(self, track):
+        unit_vec=np.array([1,0,0])
+        segments = []
+
+        def convert_gate(gate):
+            pos = gate[1]
+            ort = gate[2]
+            norm = p.multiplyTransforms(
+                    unit_vec,
+                    ort
+            )
+            return pos, norm
+
+        for start_gate, end_gate in zip(track, [*track[1:], track[0]]):
+            segmnet = Segment(
+                Gate(*convert_gate(start_gate)),
+                Gate(*convert_gate(end_gate)),
+            )
+            segments.append(segment)
+        
+        return Track(segments) 
+
     def loadTrack(self, CLIENT):
         obs = self._generateObservations(self.track)
         g_urdfs = self._addTrackBullet(self.track, CLIENT)
@@ -95,9 +118,8 @@ if __name__ == "__main__":
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.setGravity(0,0,0)
-    planeId = p.loadURDF("plane.urdf")
 
-    loader = TrackLoader(physicClient, "tracks/single_gate.csv")
+    loader = TrackLoader(physicClient, "tracks/circle_gate.csv")
     obs, g_urdfs = loader.loadTrack()
 
     startPos = [0, 0, 1]
