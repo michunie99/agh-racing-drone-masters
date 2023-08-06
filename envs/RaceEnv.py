@@ -311,7 +311,7 @@ class RaceAviary(BaseAviary):
         # print("Field reward:", filed_reward)
         
         reward += filed_reward * self.FILED_COEF
-        
+        self.infos["filed_reward"] = filed_reward
 
         # Add penaulty for gate colision
         
@@ -331,10 +331,11 @@ class RaceAviary(BaseAviary):
         omega_norm = np.linalg.norm(omega)**2
         # print(omega_norm)
         reward -= self.OMEGA_COEF * omega_norm
+        self.infos["omega_penaulty"] = omega_norm
         progress = self.progress_tracker.calculateProgres(drone_pos)
         # print("Progress:", progress)
         reward += progress 
-              
+        self.infos["progress"] = progress
         if scored:
             # reward += 100
             self.current_gate_idx = self.current_gate_idx + 1
